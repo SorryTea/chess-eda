@@ -1,0 +1,33 @@
+---
+title: "EDA"
+author: "yarosalv khomko"
+date: "2026-01-23"
+output: html_document
+---
+
+Wykorystane biblioteki
+
+```{r}
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+```
+
+Wyczytanie i przegląd danych
+
+```{r}
+chess <- read.csv("games.csv")
+head(chess, 1)
+
+summary(chess)
+```
+
+Czyszczenie danych
+
+```{r}
+#cgd - clean games data
+cgd <- chess |> filter(rated == "True") |> 
+  select(white_rating, black_rating, turns, opening_ply, rated, winner, victory_status, increment_code, opening_eco, opening_name) |>
+  mutate(rating_diff = white_rating - black_rating)
+```
+
