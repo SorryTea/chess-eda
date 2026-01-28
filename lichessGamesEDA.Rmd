@@ -8,9 +8,12 @@ output: html_document
 Wykorystane biblioteki
 
 ```{r}
+
 library(dplyr)
 library(tidyverse)
 library(ggplot2)
+library(corrplot)
+
 ```
 
 Wyczytanie i przegląd danych
@@ -31,3 +34,104 @@ cgd <- chess |> filter(rated == "True") |>
   mutate(rating_diff = white_rating - black_rating)
 ```
 
+#### Opis danych: 
+`white_rating` - ranking gracza grającego białymi figurami
+
+`black_rating` - ranking gracza grającego czarnymi figurami
+
+`turns` - liczba półruchów w partii
+
+`opening_ply` - liczba ruchów debiutowych 
+
+`winner` - zwycięzca partii
+
+`victory_status` - sposób zakończenia partii
+
+`rated` - informacja, czy partia była rankingowa
+
+`increment_code` - typ gry `czas początkowy + przyrost`
+
+`opening_name` - nazwa debiutu
+
+`opening_eco` - kod ECO debiutu
+
+`id`, `moves`, `white_id`, `black_id` - zmienne te pełnią funkcję identyfikacyjną i nie są bezpośrednio wykorzystywane w analizie
+
+Pytania badawcze
+
+1. Jaki jest ogólny rozkład wyników partii szachowych?
+
+```{r}
+vs <- as.data.frame(table(cgd$winner))
+colnames(vs) <- c("status", "count")
+vs <- vs |> mutate(percent = round(100 * (vs$count / sum(vs$count))))
+
+ggplot(vs, aes(x = "", y = percent, fill = status)) +
+  geom_col( color = "black") +
+  geom_label(aes(label = paste0(percent, "%")),
+             size = 5,
+             color = "white",
+             position = position_stack(vjust = 0.5),
+             show.legend = FALSE) +
+  guides(fill = guide_legend(title = "Winner")) +
+  coord_polar(theta = "y") +
+  theme(legend.position = "bottom") +
+  scale_fill_brewer(palette = "Dark2") +
+  theme_void()
+```
+
+2. Czy gracze grający białymi i czarnymi figurami mają porównywalny poziom rankingowy?
+
+```{r}
+# boxplot
+ggplot(cgd, aes(x = "white", y = white_rating)) + 
+    geom_boxplot()+
+    facet_wrap()
+ggplot(cgd, aes(x = "black", y = black_rating)) + 
+    geom_boxplot()+
+    facet_wrap()
+  
+
+```
+
+3. Jak wygląda rozkład długości partii szachowych rozgrywanych online?
+
+```{r}
+# histogram 
+```
+
+4. Jakie są najczęstsze sposoby zakończenia partii szachowej?
+
+```{r}
+# barplot
+```
+
+5. Czy przewaga białych figur zależy od różnicy rankingów między graczami?
+
+```{r}
+#
+```
+
+6. Czy długość partii różni się w zależności od sposobu jej zakończenia?
+
+```{r}
+
+```
+
+7. Czy tempo gry (tryb) wpływa na wynik partii?
+
+```{r}
+# heatmap
+```
+
+8. Które debiuty są najczęściej wybierane i jak skuteczne są pod względem wyniku partii?
+
+```{r}
+
+```
+
+9. Czy długość debiutu (opening ply) jest powiązana z całkowitą długością partii?
+
+```{r}
+
+```
