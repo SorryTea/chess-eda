@@ -8,33 +8,28 @@ output: html_document
 Wykorystane biblioteki
 
 ```{r}
-
-library(dplyr)
 library(tidyverse)
-library(ggplot2)
-library(corrplot)
-
 ```
 
-Wyczytanie i przegląd danych
+#### Wstęp 
+Celem niniejszej eksploracyjnej analizy danych jest zbadanie zbioru danych dotyczącego gier szachowych pochodzących z serwisu Lichess, 
+sformułowanie interesujących pytań badawczych oraz wyciągnięcie na ich podstawie wniosków.
+
+#### Wyczytanie i przegląd danych
+
+Na początku wczytamy dane i wstępnie przyjrzymy się ich strukturze oraz zawartości.
 
 ```{r}
 chess <- read.csv("games.csv")
-head(chess, 1)
+head(chess, 5)
 
-summary(chess)
 ```
 
-Czyszczenie danych
 
-```{r}
-#cgd - clean games data
-cgd <- chess |> filter(rated == "True") |> 
-  select(white_rating, black_rating, turns, opening_ply, rated, winner, victory_status, increment_code, opening_eco, opening_name) |>
-  mutate(rating_diff = white_rating - black_rating)
-```
+#### Opis danych:
 
-#### Opis danych: 
+Zmienne zawarte w tym zbiorze danych to:
+
 `white_rating` - ranking gracza grającego białymi figurami
 
 `black_rating` - ranking gracza grającego czarnymi figurami
@@ -55,14 +50,72 @@ cgd <- chess |> filter(rated == "True") |>
 
 `opening_eco` - kod ECO debiutu
 
-`id`, `moves`, `white_id`, `black_id` - zmienne te pełnią funkcję identyfikacyjną i nie są bezpośrednio wykorzystywane w analizie
+`id`, `moves`, `white_id`, `black_id` - zmienne te pełnią jedynie funkcję identyfikacyjną i raczej nie wniosą nic ciekawego do analizy, dlatego je pominąłem
 
-Pytania badawcze
+#### Czyszczenie danych
 
-1. Jaki jest ogólny rozkład wyników partii szachowych?
+W analizie zostaną uwzględnione wyłącznie gry rankingowe, ponieważ to właśnie w nich gracze wykazują większą motywację do rywalizacji. Pozwala to lepiej zaobserwować zachowania graczy w różnych przedziałach rankingowych.
 
 ```{r}
-vs <- as.data.frame(table(cgd$winner))
+chess_clean <- chess |>
+  filter(rated == "True") |>
+  select(white_rating, black_rating, turns, opening_ply,rated, winner, victory_status, increment_code, opening_eco, opening_name) |>
+  mutate(rating_diff = white_rating - black_rating)
+summary(chess_clean)
+```
+
+#### Pytania badawcze
+
+Na początku wykonamy wstępną analizę i szybko przelecimy przez statystyki opisowe, żeby sprawdzić: 
+
+*Jaki jest typowy poziom rankingowy graczy oraz jak bardzo zróżnicowane są ich umiejętności ?*
+
+```{r}
+chess_clean |> summarise(
+  mean_white = mean(white_rating),
+  median_white = median(white_rating),
+  sd_white = sd(white_rating),
+  mean_black = mean(black_rating),
+  median_black = median(black_rating),
+  sd_black = sd(black_rating)
+)
+
+```
+
+Rankingi graczy grających białymi i czarnymi są bardzo podobne, a jednocześnie widać spore zróżnicowanie poziomu umiejętności. Na tym etapie trudno jednak wyciągać poważniejsze wnioski, lepiej będzie przyjrzeć się tym danym dokładniej za pomocą wizualizacji w kolejnych krokach analizy.
+
+*Jak duże są typowe różnice rankingowe pomiędzy przeciwnikami?*
+
+```{r}
+chess_clean |> summarise(
+  mean_diff = mean(rating_diff),
+  median_diff = median(rating_diff),
+  q1 = quantile(rating_diff, 0.25),
+  q3 = quantile(rating_diff, 0.75)
+)
+
+```
+
+Choć średnia i mediana są bardzo zbliżone i sugerują brak istotnych różnic w rankingu, wartości pierwszego i trzeciego kwartyla dają podstawy, by podejrzewać, że wyniki części partii mogą być efektem działania mechanizmu matchmakingu.
+
+*Jak długa jest typowa partia szachowa oraz jak długi jest przeciętny debiut?*
+
+```{r}
+chess_clean |> summarise(
+  mean_turns = mean(turns),
+  median_turns = median(turns),
+  mean_opening_ply = mean(opening_ply),
+  median_opening_ply = median(opening_ply)
+)
+
+```
+
+Typowa partia szachowa w analizowanym zbiorze trwa około 55–60 ruchów, przy czym część dłuższych gier podnosi średnią długość partii. Debiuty są natomiast krótkie, zazwyczaj gracze przestają robić ruchi teoretycze już po 4–5 ruchach i szybko przechodzą do gry środkowej.
+
+Teraz przechodzimy do części wizualizacyjnej i spróbujemy, na jej podstawie, wyciągnąć już bardziej konkretne wnioski. Pierwsze pytanie, nad którym się zastanowiłem, brzmi: *jaki jest ogólny rozkład wyników partii szachowych?* Czy szachy to idealna duelna gra, czy jednak ktoś ma przewagę?
+
+```{r, fig.width = 7, fig.height = 5}
+vs <- as.data.frame(table(chess_clean$winner))
 colnames(vs) <- c("status", "count")
 vs <- vs |> mutate(percent = round(100 * (vs$count / sum(vs$count))))
 
@@ -73,65 +126,252 @@ ggplot(vs, aes(x = "", y = percent, fill = status)) +
              color = "white",
              position = position_stack(vjust = 0.5),
              show.legend = FALSE) +
-  guides(fill = guide_legend(title = "Winner")) +
+  guides(fill = guide_legend(title = "Wynik")) +
   coord_polar(theta = "y") +
   theme(legend.position = "bottom") +
   scale_fill_brewer(palette = "Dark2") +
   theme_void()
 ```
 
-2. Czy gracze grający białymi i czarnymi figurami mają porównywalny poziom rankingowy?
+Z tego prostego wykresu kołowego możemy jasno wnioskować, że w analizowanych prawie 9 tys. partii białe mają stabilną przewagę nad czarnymi, a remisy są stosunkowo rzadkim zjawiskiem.
 
-```{r}
-# boxplot
-ggplot(cgd, aes(x = "white", y = white_rating)) + 
-    geom_boxplot()+
-    facet_wrap()
-ggplot(cgd, aes(x = "black", y = black_rating)) + 
-    geom_boxplot()+
-    facet_wrap()
+Teraz chcę przyjrzeć się dokładniej rozkładom rankingów graczy grających białymi i czarnymi, ponieważ zastanawiam się, *czy gracze po obu stronach mają porównywalny poziom rankingowy ?* i czy obserwowana przewaga białych nie wynika z tego, że oni grają  ze słabszymi przeciwnikami.
+
+```{r, fig.width = 7, fig.height = 5}
+ggplot() +
+  geom_violin(
+    data = chess_clean,
+    aes(x = "Black", y = black_rating),
+    fill = "dodgerblue4"
+  ) +
   
-
+  geom_boxplot(
+    data = chess_clean,
+    aes(x = "Black", y = black_rating),
+    fill = "dodgerblue1",
+    width = 0.4
+  ) +
+  labs(
+    x = "Kolor",
+    y = "Ranking"
+  )+
+  geom_violin(
+    data = chess_clean,
+    aes(x = "White", y = white_rating),
+    fill = "firebrick4"
+  ) +
+  geom_boxplot(
+    data = chess_clean,
+    aes(x = "White", y = white_rating),
+    fill = "firebrick1",
+    width = 0.4
+    
+  ) +
+  theme_grey()
+  
 ```
 
-3. Jak wygląda rozkład długości partii szachowych rozgrywanych online?
+Rozkłady rankingów graczy grających białymi i czarnymi są bardzo zbliżone. Mediany oraz zakresy międzykwartylowe niemal się pokrywają, co sugeruje brak istotnych różnic w poziomie umiejętności ze względu na kolor. Widoczna jest jednak delikatna przewaga białych w górnej części rozkładu.
 
-```{r}
-# histogram 
-```
+#### Podział na grupy 
 
-4. Jakie są najczęstsze sposoby zakończenia partii szachowej?
-
-```{r}
-# barplot
-```
-
-5. Czy przewaga białych figur zależy od różnicy rankingów między graczami?
-
-```{r}
-#
-```
-
-6. Czy długość partii różni się w zależności od sposobu jej zakończenia?
-
-```{r}
-
-```
-
-7. Czy tempo gry (tryb) wpływa na wynik partii?
-
-```{r}
-# heatmap
-```
-
-8. Które debiuty są najczęściej wybierane i jak skuteczne są pod względem wyniku partii?
+W dalszej części chciałbym zbadać zachowania graczy na różnych poziomach rankingowych, dlatego potrzebne będzie podzielenie danych na odpowiednie grupy.
 
 ```{r}
 
+breaks <- c(-Inf, 1200, 1400, 1600, 1800, 2000, 2200, 2300, 2400, 2500, 2700, Inf)
+
+lvl <- c(
+  "below 1200 (Novice)",
+  "1200–1400 (Class D)",
+  "1400–1600 (Class C)",
+  "1600–1800 (Class B)",
+  "1800–2000 (Class A)",
+  "2000–2200 (Expert/CM)",
+  "2200–2300 (CM/NM)",
+  "2300–2400 (FM)",
+  "2400–2500 (IM/GM)",
+  "2500–2700 (GM)",
+  "2700+ (WC contenders)"
+)
+
+clean_groups <- chess_clean |> mutate(
+  game_rating = (white_rating + black_rating) / 2,
+  rating_group = cut(game_rating, breaks, lvl, right = FALSE))
 ```
 
-9. Czy długość debiutu (opening ply) jest powiązana z całkowitą długością partii?
+W celu analizy zachowań graczy na różnych poziomach umiejętności, dane zostały podzielone na grupy rankingowe. Podział ten oparto na powszechnie stosowanych klasyfikacjach spotykanych głównie w źródłach internetowych oraz w środowisku szachowym, które w przybliżony sposób opisują poziom gry zawodników na podstawie rankingu.
+
+Przyjęto takie przedziały:
+
+`Poniżej 1200 (Novice)` – gracze początkujący
+
+`1200–1400 (Class D)` – gracze o podstawowych umiejętnościach
+
+`1400–1600 (Class C)` – gracze średniozaawansowani
+
+`1600–1800 (Class B)` – gracze solidni, dobrze opanowujący podstawy strategii i taktyki
+
+`1800–2000 (Class A)` – gracze zaawansowani, grający stabilnie i świadomie
+
+`2000–2200 (Expert / CM – Candidate Master)` – bardzo silni gracze, często posiadający lub aspirujący do tytułu kandydata na mistrza
+
+`2200–2300 (CM / NM – Candidate Master / National Master)` – gracze mistrzowscy na poziomie krajowym
+
+`2300–2400 (FM – FIDE Master)` – zawodnicy z oficjalnym tytułem mistrza federacji szachowej FIDE
+
+`2400–2500 (IM / GM – International Master / Grandmaster)` – bardzo wysoki poziom międzynarodowy
+
+`2500–2700 (GM – Grandmaster)` – światowa czołówka arcymistrzów
+
+`Powyżej 2700 (WC contenders – World Championship contenders)` – absolutna elita światowa, potencjalni pretendenci do tytułu mistrza świata (takich w zestawie nie ma)
+
+
+Skoro mamy już dane podzielone na grupy rankingowe, możemy zastanowić się, *jaki jest rozkład wyników partii w zależności od poziomu gry ?*, czy obserwowana przewaga białych utrzymuje się na wszystkich poziomach umiejętności.
+
+```{r, fig.width = 8, fig.height = 6}
+groups3 <- clean_groups |>
+  count(rating_group, winner) |>
+  group_by(rating_group) |>
+  mutate(percent = round(n / sum(n) * 100))
+
+n_games <- clean_groups |> count(rating_group, name = "n_games")
+
+
+ggplot(groups3, aes(x = rating_group, y = percent, fill = winner)) +
+  geom_col(
+    position = position_dodge(0.5),
+    width = 0.4
+  ) +
+  coord_flip() +
+  geom_text(
+    data = n_games,
+    aes(x = rating_group, y = 1, label = n_games),
+    inherit.aes = FALSE,
+    color = "black",     
+    fontface = "bold",     
+    size = 6
+  )+
+  geom_text(
+    data = n_games |> filter(n_games < 50),
+    aes(x = rating_group, y = 1, label = n_games),
+    inherit.aes = FALSE,
+    color = "red",     
+    fontface = "bold",     
+    size = 6
+  )+
+  labs(
+    x = "Poziom gry ",
+    y = "Udział wyników",
+    fill = "Wynik"
+  ) +
+  theme_grey()
+ 
+```
+
+Rozkład wyników w podziale na poziomy rankingowe pokazuje, że przewaga białych występuje na wszystkich poziomach gry, jednak wraz ze wzrostem umiejętności graczy różnice te stopniowo maleją, a rola remisów staje się coraz większa.
+
+**Uwaga:** Ze względu na bardzo małą liczność obserwacji w najwyższych przedziałach rankingowych (FM oraz IM/GM), grupy te zostały wyłączone z dalszej analizy, aby uniknąć niestabilnych i trudnych do interpretacji wyników.
 
 ```{r}
+groups_f <- clean_groups |>filter(!rating_group %in% c("2300–2400 (FM)","2400–2500 (IM/GM)"))
+```
+
+Teraz kontynuujemy analizę z wykorzystaniem grup rankingowych, ale nieco zmieniamy perspektywę i sprawdzimy, *jak zmienia się długość partii w zależności od poziomu rankingowego graczy oraz trybu gry ?*
+
+```{r, fig.width = 8, fig.height = 6}
+groups_f4 <- groups_f |>
+  separate(increment_code, into = c("base_time", "increment"), sep = "\\+",convert = TRUE) |>
+  mutate(
+    time_control = ifelse(base_time <= 2, "Bullet",
+      ifelse(base_time <= 5, "Blitz",
+        ifelse(base_time <= 15, "Rapid",
+          "Classical"
+        ))))
+
+ggplot(groups_f4,aes(x = rating_group, y = turns)) +
+  geom_boxplot(
+    fill = "red",
+    color = "gold"
+  ) +
+  coord_flip() +
+  facet_wrap(~ time_control) +
+  labs(x="", y = "Liczba półruchów") +
+  theme_grey()
+```
+
+Według mojej analizy można stwierdzić, że długość partii silnie zależy od tempa gry, im wolniejsze tempo, tym dłuższe partie. Dodatkowo wraz ze wzrostem poziomu rankingowego gracze rozgrywają coraz dłuższe partie, co jest szczególnie widoczne w tempach Rapid i Classical.
+
+Kolejnym pytaniem badawczym jest to, *jak poziom gry wpływa na najczęstsze sposoby zakończenia partii szachowej ?* Czy wraz ze wzrostem umiejętności graczy zmienia się charakter zakończeń partii, na przykład od szybkich matów i poddań na niższych poziomach do bardziej technicznych remisów i końcówek na poziomach wyższych?
+
+```{r}
+groups_f5 <- groups_f4 |>
+  count(rating_group, victory_status, name = "n") |>
+  group_by(rating_group) |>
+  mutate(percent = n / sum(n))
+
+ggplot(groups_f5, aes(x = rating_group, y = percent, fill = victory_status)) +
+  geom_col(position = "fill") +
+  coord_flip() +
+  scale_fill_brewer(palette = "Set2") +
+  labs(x ="", y = "",fill = "Sposób zakończenia") +
+  theme_minimal()
+```
+
+Wykres wyrażnei przedstawia, że na niższych poziomach dominują zakończenia matem(oprócz rezygnacji), na wyższych poziomach partie częściej  kończą się poddaniem lub remisem, co świadczy o lepszym rozumieniu pozycji i większej precyzji gry. Podsumowując te wykres, można stwierdzić, że im silniejszy gracz, tym mniej wiaregodnym jest zakończenie partii matem i częściej dochodzi do poddań lub remisów. Ponadto zmiana struktury zakończeń partii wraz z poziomem gry potwierdza, że ranking dobrze odzwierciedla realne umiejętności graczy. 
+
+Na chwilę odkładamy grupy rankingowe i zobaczymy, *jak sposób zakończenia partii zależy od jej długości ?*
+
+```{r, fig.width = 7, fig.height = 5}
+ggplot(groups_f, aes(x = victory_status, y = turns, fill = victory_status)) +
+  geom_boxplot() +
+  labs(x="", y="")+
+  theme_grey()
+```
+
+Możemy tu zauważyć, że partie zakończone poddaniem są zazwyczaj krótsze, co może wynikać z poważnych błędów (blunderów) popełnianych na wczesnym etapie gry, po których dalsza gra traci sens z perspektywy jednego z graczy. Z kolei partie zakończone remisem są najdłuższe, co sugeruje, że są to gry wyrównane, w których żadna ze stron nie jest w stanie uzyskać decydującej przewagi, a rozstrzygnięcie następuje dopiero w późnej fazie partii.
+
+W dalszej części analizy zbadamy, *czy jest zależność pomiędzy trybem gry a rozkładem wyników partii szachowych?*
+
+```{r, fig.width = 7, fig.height = 5}
+groups_f7 <- groups_f4 |>
+  count(time_control, winner, name = "n") |>
+  group_by(time_control) |>
+  mutate(percent = round(n / sum(n)*100))
+
+n_tc <- groups_f4 |> count(time_control, name = "n_games")
+
+ggplot(groups_f7, aes(x = time_control, y = winner, fill = percent)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label =percent),
+            fontface = "bold",
+            size = 4) +
+  labs(x="", y="")+
+  scale_fill_gradient(
+  low = "darkorchid1",
+  high = "darkorange1")+
+  theme_grey()
+```
+
+Można zaobserwować, że w trybie Bullet, czyli w rozgrywkach o najkrótszym limicie czasowym, białe tracą swoją typową przewagę, która w tym przypadku przechyla się na korzyść czarnych. Można to interpretować w ten sposób, że w tak szybkim tempie białe są zmuszone nadawać tempo gry i podejmować decyzje szybciej, co czyni je bardziej podatnymi na błędy oraz przekroczenie limitu czasu. Czarne natomiast mogą w większym stopniu reagować na ruchy przeciwnika, co w warunkach silnej presji czasu może stanowić istotną przewagę. Dodatkowo można zauważyć, że w szybkich trybach gry remisy występują znacznie rzadziej.
+
+Na koniec analizy na chwile wrócimy do grup i sprawdzimy *czy wraz ze wzrostem poziomu rankingowego gracze rozgrywają dłuższą fazę debiutu ?*, co może sugerować korzystanie z bardziej złożonych i trudniejszych do zapamiętania wariantów debiutowych.
+
+```{r}
+groups_fl <- groups_f |> group_by(rating_group) |>
+  summarise(mean_opening = mean(opening_ply),n = n())
+
+ggplot(groups_fl, aes(x =mean_opening, y = rating_group)) +
+   geom_point(
+    shape = 23,       
+    size = 3,
+    fill = "darkgreen"
+  ) +
+  labs(x = "przeciętna długość debiutu", y = "") 
 
 ```
+
+Tu jasno widać, że wraz ze wzrostem poziomu gry gracze częściej pozostają dłużej w fazie debiutu, co potwierdza hipotezę i wskazuje, że podział na grupy rankingowe sensownei odzwierciedla poziom umiejętności gracza.
+
+#### Krótkie podsumowanie
+Cała analiza była dla mnie okazją, by z ciekawości przyjrzeć się danym szachowym i sprawdzić, które intuicyjne przekonania rzeczywiście znajdują potwierdzenie w danych, a które okazały się mitami.
